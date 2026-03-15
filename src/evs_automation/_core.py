@@ -48,7 +48,25 @@ def _set_or_find_pid(pid):
 
     return process.pid
 
-def _find_evs_version_path(suggested = None, prefer_development = True):
+def find_install_path(preferred_version: str | None = None, prefer_development: bool = False) -> str:
+    """Return the root installation folder of an installed EVS version.
+
+    Searches the Windows registry for EVS installations and returns the
+    root directory (e.g. ``C:\\\\Program Files\\\\C Tech\\\\EVS 2026.3``).
+
+    Args:
+        preferred_version: A specific version string to look for (e.g. ``"2026.3.0.0"``).
+            If found, that version is returned. Otherwise falls back to the
+            newest installed version.
+        prefer_development: If True and a Development build is installed,
+            return its path instead of the latest release version.
+
+    Returns:
+        The root installation path as a string.
+
+    Raises:
+        ValueError: If no EVS installation is found in the registry.
+    """
     with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\C Tech Development Corporation") as ct_key:
         max_version = packaging.version.Version("1.0.0.0")
         max_version_key_name = ''
@@ -64,8 +82,8 @@ def _find_evs_version_path(suggested = None, prefer_development = True):
                         continue
                 else:
                     v = packaging.version.Version(version)
-                    if version == suggested:
-                        max_version = Version(v)
+                    if version == preferred_version:
+                        max_version = v
                         max_version_key_name = skey_name
                         break
                     elif v > max_version:
@@ -73,12 +91,15 @@ def _find_evs_version_path(suggested = None, prefer_development = True):
                         max_version_key_name = skey_name
         if max_version.major > 1:
             with winreg.OpenKey(ct_key, max_version_key_name) as version_key:
-                path = winreg.QueryValueEx(version_key, "Path")[0]
-                return os.path.join(path, 'bin\\system')
+                return winreg.QueryValueEx(version_key, "Path")[0]
     raise ValueError('EVS Installation Not Found')
 
-def _find_evs_executable_path(suggested = None, prefer_development = True):
-    folder = _find_evs_version_path(suggested, prefer_development)
+def _find_evs_version_path(preferred_version = None, prefer_development = False):
+    path = find_install_path(preferred_version, prefer_development)
+    return os.path.join(path, 'bin', 'system')
+
+def _find_evs_executable_path(preferred_version = None, prefer_development = False):
+    folder = _find_evs_version_path(preferred_version, prefer_development)
     exe = os.path.join(folder, 'EarthVolumetricStudio.exe')
     if os.path.exists(exe):
         return exe

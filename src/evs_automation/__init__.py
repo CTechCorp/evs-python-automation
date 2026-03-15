@@ -16,6 +16,7 @@ from evs_automation._core import (
     InterpolationMethod,
     FieldData,
     FieldInfo,
+    find_install_path,
     start_new,
     connect_to_existing,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "InterpolationMethod",
     "FieldData",
     "FieldInfo",
+    "find_install_path",
     "start_new",
     "connect_to_existing",
     "evsdate_to_datetime",
