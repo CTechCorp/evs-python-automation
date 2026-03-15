@@ -154,14 +154,14 @@ with evs.get_field_info('kriging_3d', 'field_out') as field:
 ### Phase 1: EVS-side pipe operations
 - [x] Add `GetNetworkContentsForMcp` operation to `ExternalScriptOperations.cs`
 - [x] Add `PatchNetworkContents` operation to `ExternalScriptOperations.cs`
-- [ ] Add `NewApplication` operation to `ExternalScriptOperations.cs`
+- [x] Add `NewApplication` operation to `ExternalScriptOperations.cs`
 - [x] Add field data operations (`GetFieldSummary`, `GetFieldCoordinates`, `GetFieldCellCenters`, `GetFieldNodeData`, `GetFieldCellData`)
 - [x] Add `IFieldReader` raw array methods (`GetCoordinatesRaw`, `GetCellCentersRaw`, `GetNodeDataValuesRaw`, `GetCellDataValuesRaw`)
 
 ### Phase 2: evs_automation library updates
 - [x] Add `get_network_contents_for_mcp(*module_names)` to `_EvsProcess`
 - [x] Add `patch_network_contents(json)` to `_EvsProcess`
-- [ ] Add `new_application()` to `_EvsProcess`
+- [x] Add `new_application()` to `_EvsProcess`
 - [x] Add `save_application(path)` to `_EvsProcess` (already present)
 - [x] Add field data access via `get_field_info()` returning `FieldInfo`/`FieldData` wrapper classes
 - [x] Add `import_asset()` / `get_export_stage()` stubs (raise `NotImplementedError`)

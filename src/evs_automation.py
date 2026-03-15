@@ -157,7 +157,7 @@ class FieldInfo:
         self._proc = proc
         self._module = module
         self._port = port
-        self._summary = proc._EvsProcess__build_result("GetFieldSummary", module, port)
+        self._summary = proc._internal_request("GetFieldSummary", module, port)
         self._coordinates: list[tuple[float,float,float]] | None = None
         self._cell_centers: list[tuple[float,float,float]] | None = None
         self._closed = False
@@ -356,6 +356,13 @@ class _EvsProcess:
         self.__handle = None
         self.__pid = None
         return True
+
+    def new_application(self) -> Any:
+        """
+        Clear the current network and reset to a blank application with default
+        application properties and a viewer module.
+        """
+        return self.__build_result("NewApplication")
 
     def load_application(self, application_file: str) -> Any:
         """
