@@ -159,7 +159,7 @@ class FieldInfo:
     """
     __slots__ = ('_proc', '_module', '_port', '_summary', '_coordinates', '_cell_centers', '_closed')
 
-    def __init__(self, proc: '_EvsProcess', module: str, port: str):
+    def __init__(self, proc: 'EvsProcess', module: str, port: str):
         self._proc = proc
         self._module = module
         self._port = port
@@ -297,7 +297,13 @@ class FieldInfo:
         self._closed = True
 
 
-class _EvsProcess:
+class EvsProcess:
+    """A connection to a running Earth Volumetric Studio process.
+
+    Do not instantiate this class directly. Use :func:`start_new` or
+    :func:`connect_to_existing` to obtain an instance.
+    """
+
     _bufferSize = 8192 * 8
     def __init__(self, pid, timeout):
         self.__handle = None
@@ -827,7 +833,7 @@ def start_new(auto_shutdown: bool = True, timeout: int = 300, auto_wait_for_read
     process = subprocess.Popen(args)
     _pid = process.pid
     time.sleep(1.0)
-    proc = _EvsProcess(_pid, timeout)
+    proc = EvsProcess(_pid, timeout)
     try:
         version = proc.get_api_version()
         if (version != 1.0):
@@ -858,7 +864,7 @@ def connect_to_existing(pid: int = -1, auto_shutdown: bool = False, timeout: int
     """
     _pid = _set_or_find_pid(pid)
 
-    proc = _EvsProcess(_pid, timeout)
+    proc = EvsProcess(_pid, timeout)
     try:
         version = proc.get_api_version()
         if (version != 1.0):
