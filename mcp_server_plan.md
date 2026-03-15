@@ -129,10 +129,10 @@ Internally, `get_field_info()` returns a `FieldInfo` object that holds a .NET fi
 | Pipe Method | Args | Returns |
 |---|---|---|
 | `GetFieldSummary` | `module, port` | `{NumberOfCoordinates, NumberOfCells, NumberOfNodeData, NumberOfCellData, CoordinateUnits}` |
-| `GetFieldCoordinates` | `module, port` | Flat `double[]` (x0,y0,z0, x1,y1,z1, ...) |
-| `GetFieldCellCenters` | `module, port` | Flat `double[]` (x0,y0,z0, x1,y1,z1, ...) |
-| `GetFieldNodeData` | `module, port, index` | `{Name, Units, IsLog, ComponentCount, Values: double[]}` |
-| `GetFieldCellData` | `module, port, index` | `{Name, Units, IsLog, ComponentCount, Values: double[]}` |
+| `GetFieldCoordinates` | `module, port, [offset, count]` | Flat `double[]` (x0,y0,z0, x1,y1,z1, ...). Offset/count are in points. |
+| `GetFieldCellCenters` | `module, port, [offset, count]` | Flat `double[]` (x0,y0,z0, x1,y1,z1, ...). Offset/count are in points. |
+| `GetFieldNodeData` | `module, port, index, [offset, count]` | `{Name, Units, IsLog, ComponentCount, Values: double[]}`. Offset/count are in values. |
+| `GetFieldCellData` | `module, port, index, [offset, count]` | `{Name, Units, IsLog, ComponentCount, Values: double[]}`. Offset/count are in values. |
 
 **Python classes** (in `evs_automation.py`):
 - `FieldInfo` — wraps summary data, lazily fetches coordinates/cell_centers. Same properties as internal: `number_coordinates`, `number_cells`, `number_node_data`, `number_cell_data`, `coordinate_units`, `coordinates`, `cell_centers`, `get_node_data(i)`, `get_cell_data(i)`.
@@ -147,7 +147,9 @@ with evs.get_field_info('kriging_3d', 'field_out') as field:
         print(f'{data.name}: {len(data.values)} values')
 ```
 
-**Caveat**: Each `get_node_data`/`get_cell_data`/`coordinates`/`cell_centers` call opens a new field reader on the EVS side. For very large fields, this may need chunked/paginated variants later.
+**Chunked reads**: All four data operations accept optional `offset`/`count` arguments for paginated reads. The Python `FieldInfo` class transparently chunks large fields (>100K items per chunk via `_FIELD_CHUNK_SIZE`) so the user-facing API is unchanged. Each chunk opens a new field reader, reads the full native array, slices it, serializes just the slice to JSON, and returns it. This bounds JSON message size to ~4.5 MB per chunk while the user sees a single seamless list.
+
+**Note**: Each chunked call still reads the full native array and slices on the C# side. The memory savings are in JSON serialization and Python-side deserialization, which are the actual bottlenecks (JSON text is ~3-4x the raw double size, and Python float objects are ~4x that).
 
 ## Work Items
 
@@ -177,4 +179,4 @@ with evs.get_field_info('kriging_3d', 'field_out') as field:
 
 - ~~Should `patch_network_contents` support adding/removing connections?~~ **Yes** — `AddConnections` and `RemoveConnections` arrays are supported, batched in the same bulk update.
 - MCP tool granularity: one big "edit application" tool vs many small tools?
-- Field data: will chunked/paginated reads be needed for very large fields, or is the pipe buffer sufficient?
+- ~~Field data: will chunked/paginated reads be needed for very large fields, or is the pipe buffer sufficient?~~ **Yes** — all field data operations now accept optional `offset`/`count` args. Python `FieldInfo` transparently chunks at 100K items. The named pipe itself has no message size limit (it streams), but JSON serialization + Python object overhead are the real bottlenecks, so chunking keeps per-call memory bounded.

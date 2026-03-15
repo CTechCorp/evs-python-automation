@@ -119,6 +119,12 @@ class FieldData:
             self.values = [tuple(flat_values[i:i+nc]) for i in range(0, len(flat_values), nc)]
 
 
+_FIELD_CHUNK_SIZE = 100_000
+"""Number of items (points or values) to fetch per pipe call when reading field data.
+Each chunk serializes to roughly 1.5–4.5 MB of JSON depending on component count,
+keeping memory usage and pipe transfer sizes manageable for large fields."""
+
+
 class FieldInfo:
     """
     Represents a field, allowing it to be read from Python via external automation.
@@ -197,13 +203,27 @@ class FieldInfo:
         """The units used for the coordinates"""
         return self._summary['CoordinateUnits']
 
+    def _fetch_point_data(self, method: str, total: int) -> list[tuple[float,float,float]]:
+        """Fetches 3D point data (coordinates or cell centers) in chunks."""
+        if total <= _FIELD_CHUNK_SIZE:
+            raw = self._proc._internal_request(method, self._module, self._port)
+            return [tuple(raw[i:i+3]) for i in range(0, len(raw), 3)]
+
+        points: list[tuple[float,float,float]] = []
+        offset = 0
+        while offset < total:
+            count = min(_FIELD_CHUNK_SIZE, total - offset)
+            raw = self._proc._internal_request(method, self._module, self._port, offset, count)
+            points.extend(tuple(raw[i:i+3]) for i in range(0, len(raw), 3))
+            offset += count
+        return points
+
     @property
     def coordinates(self) -> list[tuple[float,float,float]]:
         """The list of (x,y,z) coordinate tuples for nodes, loaded lazily"""
         self._check_closed()
         if self._coordinates is None:
-            raw = self._proc._internal_request("GetFieldCoordinates", self._module, self._port)
-            self._coordinates = [tuple(raw[i:i+3]) for i in range(0, len(raw), 3)]
+            self._coordinates = self._fetch_point_data("GetFieldCoordinates", self.number_coordinates)
         return self._coordinates
 
     @property
@@ -211,13 +231,34 @@ class FieldInfo:
         """The list of (x,y,z) coordinate tuples for cell centers, loaded lazily"""
         self._check_closed()
         if self._cell_centers is None:
-            raw = self._proc._internal_request("GetFieldCellCenters", self._module, self._port)
-            self._cell_centers = [tuple(raw[i:i+3]) for i in range(0, len(raw), 3)]
+            self._cell_centers = self._fetch_point_data("GetFieldCellCenters", self.number_cells)
         return self._cell_centers
+
+    def _fetch_data_component(self, method: str, index: int, total_values: int) -> FieldData:
+        """Fetches a data component (node or cell) in chunks if needed."""
+        if total_values <= _FIELD_CHUNK_SIZE:
+            raw = self._proc._internal_request(method, self._module, self._port, index)
+            return FieldData(raw)
+
+        # Fetch in chunks — each response includes metadata + sliced Values
+        all_values: list[float] = []
+        metadata: dict | None = None
+        offset = 0
+        while offset < total_values:
+            count = min(_FIELD_CHUNK_SIZE, total_values - offset)
+            raw = self._proc._internal_request(method, self._module, self._port, index, offset, count)
+            if metadata is None:
+                metadata = raw
+            all_values.extend(raw['Values'])
+            offset += count
+        metadata['Values'] = all_values
+        return FieldData(metadata)
 
     def get_node_data(self, index: int) -> FieldData:
         """
         Gets the node data component at the specified index, including all values.
+
+        For large fields (>100K nodes), values are fetched in chunks transparently.
 
         Keyword Arguments:
         index -- the zero-based index of the node data component (required)
@@ -230,12 +271,13 @@ class FieldInfo:
         self._check_closed()
         if index < 0 or index >= self.number_node_data:
             raise ValueError('Node data index out of range')
-        raw = self._proc._internal_request("GetFieldNodeData", self._module, self._port, index)
-        return FieldData(raw)
+        return self._fetch_data_component("GetFieldNodeData", index, self.number_coordinates)
 
     def get_cell_data(self, index: int) -> FieldData:
         """
         Gets the cell data component at the specified index, including all values.
+
+        For large fields (>100K cells), values are fetched in chunks transparently.
 
         Keyword Arguments:
         index -- the zero-based index of the cell data component (required)
@@ -248,8 +290,7 @@ class FieldInfo:
         self._check_closed()
         if index < 0 or index >= self.number_cell_data:
             raise ValueError('Cell data index out of range')
-        raw = self._proc._internal_request("GetFieldCellData", self._module, self._port, index)
-        return FieldData(raw)
+        return self._fetch_data_component("GetFieldCellData", index, self.number_cells)
 
     def close(self) -> None:
         """Marks the FieldInfo as closed."""
