@@ -191,12 +191,21 @@ class _EvsProcess:
     def load_application(self, application_file):
         """
         Load an application within EVS.
-        
-        Keyword Arguments: 
+
+        Keyword Arguments:
         application_file -- the full path to the .evs application (required)
         """
         return self.__build_result("LoadApplication", application_file)
-        
+
+    def save_application(self, application_file):
+        """
+        Save the current application within EVS.
+
+        Keyword Arguments:
+        application_file -- the full path to save the .evs application to (required)
+        """
+        return self.__build_result("SaveApplication", application_file)
+
     def execute_python_script(self, script_file):
         """
         Execute a python script within EVS.
@@ -395,9 +404,39 @@ class _EvsProcess:
         """
         return self.__build_result("Refresh")
 
-    def is_module_executed():
+    def get_network_contents_for_mcp(self, *module_names):
         """
-        Always returns False. Included for compatibility with EVS internal scripting
+        Get the current network contents in MCP format (non-default property values only, no path relativization).
+
+        Keyword Arguments:
+        *module_names -- optional module display names to filter to specific modules.
+            Pass no arguments to get all modules and application properties.
+            Pass 'Application Properties' or 'application_properties' to get only application properties.
+        """
+        return self.__build_result("GetNetworkContentsForMcp", *module_names)
+
+    def patch_network_contents(self, patch_json):
+        """
+        Apply a partial JSON update to the running network. Sets only the properties present
+        in the JSON without clearing or reloading the network.
+
+        The patch JSON should use the same structure as get_network_contents_for_mcp output:
+        {
+            "ApplicationProperties": { "Properties": { "Category": { "Property": value } } },
+            "Modules": { "module_name": { "Properties": { ... }, "Renderables": { ... } } }
+        }
+
+        Keyword Arguments:
+        patch_json -- JSON string or dict containing the properties to update (required)
+        """
+        if isinstance(patch_json, dict):
+            patch_json = json.dumps(patch_json)
+        return self.__build_result("PatchNetworkContents", patch_json)
+
+    def is_module_executed(self):
+        """
+        Always returns False. Included for compatibility with EVS internal scripting.
+        External automation scripts are never executed by a module.
         """
         return False
 
