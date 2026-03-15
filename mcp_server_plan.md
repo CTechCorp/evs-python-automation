@@ -16,63 +16,42 @@ AI Assistant  <-->  MCP Server (Python)  <-->  Named Pipe  <-->  EVS Instance
 - **evs_automation**: Python library wrapping the named pipe JSON protocol (`{method, args}` -> `{Success, Value, Error}`)
 - **Static resources**: Schema files (`runtime/schema/`), module defaults (`runtime/module_defaults/`), and help files are read directly from the EVS install directory — no pipe call needed
 
-## evs_automation Updates Needed
+## Available evs_automation API
 
-### API Parity with Internal evs.py
+The MCP server has access to these automation functions via `_EvsProcess`:
 
-The internal `evs.py` (EvsShared/evs.py) has functions that the external `evs_automation.py` (`_EvsProcess` class) is missing or handles differently:
+### Network / Application Management
+| Function | Purpose |
+|---|---|
+| `get_network_contents_for_mcp(*module_names)` | Returns diff-only JSON of the current network (non-default property values). Accepts optional module display names to filter. |
+| `patch_network_contents(json)` | Applies a partial JSON update — sets only the properties present, with batched `AddConnections`/`RemoveConnections` support. |
+| `new_application()` | Clears the current network and resets to a blank application. |
+| `save_application(path)` | Saves the current application to disk. |
+| `get_application_info()` | Returns application metadata. |
 
-| Internal evs.py | evs_automation | Status | Notes |
-|---|---|---|---|
-| `get_module()` | `get_module()` | Present | |
-| `get_module_extended()` | `get_module_extended()` | Present | |
-| `set_module()` | `set_module()` | Present | |
-| `set_module_interpolated()` | `set_module_interpolated()` | Present | |
-| `get_port()` | `get_port()` | Present | |
-| `get_port_extended()` | `get_port_extended()` | Present | |
-| `set_port()` | `set_port()` | Present | |
-| `set_port_interpolated()` | `set_port_interpolated()` | Present | |
-| `connect()` | `connect()` | Present | |
-| `disconnect()` | `disconnect()` | Present | |
-| `delete_module()` | `delete_module()` | Present | |
-| `instance_module()` | `instance_module()` | Present | |
-| `get_module_position()` | `get_module_position()` | Present | Return type differs (internal returns tuple directly) |
-| `get_modules()` | `get_modules()` | Present | |
-| `get_module_type()` | `get_module_type()` | Present | |
-| `rename_module()` | `rename_module()` | Present | |
-| `suspend()` | `suspend()` | Present | |
-| `resume()` | `resume()` | Present | |
-| `refresh()` | `refresh()` | Present | |
-| `check_cancel()` | `check_cancel()` | Present | |
-| `test()` | `test()` | Present | |
-| `sigfig()` | `sigfig()` | Present | |
-| `format_number()` / `fn()` | `format_number()` / `fn()` | Present | |
-| `format_number_adaptive()` / `fn_a()` | `format_number_adaptive()` / `fn_a()` | Present | |
-| `get_application_info()` | `get_application_info()` | Present | |
-| `is_module_executed()` | `is_module_executed()` | Present | Always returns False (stub) |
-| `get_field_info()` | `get_field_info()` | **Done** | Redesigned — returns `FieldInfo`/`FieldData` wrapper classes that make pipe calls. See "Field Data Access" below. |
-| `import_asset()` | `import_asset()` | N/A | Raises `NotImplementedError` — internal-only (loads Python modules from EVS application assets via .NET loader). |
-| `get_export_stage()` | `get_export_stage()` | N/A | Raises `NotImplementedError` — internal-only (reads globals set by EVS export pipeline). |
+### Module Operations
+| Function | Purpose |
+|---|---|
+| `instance_module(type)` | Creates a new module of the given type. |
+| `delete_module(name)` | Deletes a module by display name. |
+| `rename_module(old, new)` | Renames a module. |
+| `get_modules()` | Lists all modules in the network. |
+| `get_module_type(name)` | Returns the type of a module. |
+| `get_module(name, prop)` | Gets a module property value. |
+| `set_module(name, prop, value)` | Sets a module property value. |
+| `get_module_position(name)` | Returns the (x, y) position of a module in the network editor. |
+| `connect(from_mod, from_port, to_mod, to_port)` | Connects two ports. |
+| `disconnect(from_mod, from_port, to_mod, to_port)` | Disconnects two ports. |
 
-### New Functions for MCP Server
+### Field Data Access
+| Function | Purpose |
+|---|---|
+| `get_field_info(module, port)` | Returns a `FieldInfo` context manager with lazy chunked access to coordinates, cell centers, node/cell data. |
 
-These do not exist in either API yet and require new pipe operations on the EVS side (ExternalScriptOperations.cs):
+Field data is fetched in chunks of 100K items transparently. `FieldInfo` properties: `number_coordinates`, `number_cells`, `number_node_data`, `number_cell_data`, `coordinate_units`, `coordinates`, `cell_centers`, `get_node_data(i)`, `get_cell_data(i)`.
 
-| Function | Pipe Method | Purpose |
-|---|---|---|
-| `get_network_contents_for_mcp(*module_names)` | `GetNetworkContentsForMcp` | Returns diff-only JSON of the current network (non-default property values, no path relativization). Accepts optional module display names to filter. |
-| `patch_network_contents(json)` | `PatchNetworkContents` | Applies a partial JSON update to the running network — sets only the properties present in the JSON, without clearing/reloading. This avoids the expense of a full `LoadApplication` round-trip. |
-| `new_application()` | `NewApplication` | Clears the current network and resets to a blank application. Requires new pipe operation. |
-| `save_application(path)` | `SaveApplication` | Pipe method exists but not exposed in evs_automation. |
+### patch_network_contents Format
 
-### patch_network_contents Design
-
-The MCP workflow is:
-1. AI reads current state via `get_network_contents_for_mcp()`
-2. AI decides what to change
-3. AI sends back a partial JSON with only the changed properties via `patch_network_contents()`
-
-The patch JSON uses the same structure as the MCP contents output:
 ```json
 {
   "Modules": {
@@ -99,14 +78,7 @@ The patch JSON uses the same structure as the MCP contents output:
         "PropertyName": new_value
       }
     }
-  }
-}
-```
-
-This translates directly to `SetValue` calls for each property found in the patch. Connections can also be added/removed in the same batch:
-
-```json
-{
+  },
   "AddConnections": [
     { "FromModule": "mod_a", "FromPort": "field_out", "ToModule": "mod_b", "ToPort": "field_in" }
   ],
@@ -118,58 +90,9 @@ This translates directly to `SetValue` calls for each property found in the patc
 
 All property changes, connection adds, and connection removes are batched within a single `BulkChanges` state push. Module instancing and deletions should still use the existing discrete API calls.
 
-### Field Data Access (Implemented)
-
-Internally, `get_field_info()` returns a `FieldInfo` object that holds a .NET field reader. Properties like `coordinates` and `values` are lazily loaded and can be very large (millions of points). This doesn't translate to a single pipe call.
-
-**Implementation approach**: The external API preserves the same `FieldInfo`/`FieldData` class interface as the internal API but uses pipe calls under the hood. Each data access opens a new field reader on the EVS side, extracts the data, serializes to JSON, and closes the reader. The `IFieldReader` interface was extended with `Raw` methods returning `double[]` instead of `PyList` for efficient pipe serialization.
-
-**Pipe operations** (in `ExternalScriptOperations.cs`):
-
-| Pipe Method | Args | Returns |
-|---|---|---|
-| `GetFieldSummary` | `module, port` | `{NumberOfCoordinates, NumberOfCells, NumberOfNodeData, NumberOfCellData, CoordinateUnits}` |
-| `GetFieldCoordinates` | `module, port, [offset, count]` | Flat `double[]` (x0,y0,z0, x1,y1,z1, ...). Offset/count are in points. |
-| `GetFieldCellCenters` | `module, port, [offset, count]` | Flat `double[]` (x0,y0,z0, x1,y1,z1, ...). Offset/count are in points. |
-| `GetFieldNodeData` | `module, port, index, [offset, count]` | `{Name, Units, IsLog, ComponentCount, Values: double[]}`. Offset/count are in values. |
-| `GetFieldCellData` | `module, port, index, [offset, count]` | `{Name, Units, IsLog, ComponentCount, Values: double[]}`. Offset/count are in values. |
-
-**Python classes** (in `evs_automation.py`):
-- `FieldInfo` — wraps summary data, lazily fetches coordinates/cell_centers. Same properties as internal: `number_coordinates`, `number_cells`, `number_node_data`, `number_cell_data`, `coordinate_units`, `coordinates`, `cell_centers`, `get_node_data(i)`, `get_cell_data(i)`.
-- `FieldData` — wraps a single data component: `name`, `units`, `is_log`, `component_count`, `values`. Values are unpacked from flat arrays (scalar stays flat, vector grouped into tuples).
-
-**Usage** (matches internal API):
-```python
-with evs.get_field_info('kriging_3d', 'field_out') as field:
-    print(f'{field.number_coordinates} coordinates')
-    for i in range(field.number_node_data):
-        data = field.get_node_data(i)
-        print(f'{data.name}: {len(data.values)} values')
-```
-
-**Chunked reads**: All four data operations accept optional `offset`/`count` arguments for paginated reads. The Python `FieldInfo` class transparently chunks large fields (>100K items per chunk via `_FIELD_CHUNK_SIZE`) so the user-facing API is unchanged. Each chunk opens a new field reader, reads the full native array, slices it, serializes just the slice to JSON, and returns it. This bounds JSON message size to ~4.5 MB per chunk while the user sees a single seamless list.
-
-**Note**: Each chunked call still reads the full native array and slices on the C# side. The memory savings are in JSON serialization and Python-side deserialization, which are the actual bottlenecks (JSON text is ~3-4x the raw double size, and Python float objects are ~4x that).
-
 ## Work Items
 
-### Phase 1: EVS-side pipe operations
-- [x] Add `GetNetworkContentsForMcp` operation to `ExternalScriptOperations.cs`
-- [x] Add `PatchNetworkContents` operation to `ExternalScriptOperations.cs`
-- [x] Add `NewApplication` operation to `ExternalScriptOperations.cs`
-- [x] Add field data operations (`GetFieldSummary`, `GetFieldCoordinates`, `GetFieldCellCenters`, `GetFieldNodeData`, `GetFieldCellData`)
-- [x] Add `IFieldReader` raw array methods (`GetCoordinatesRaw`, `GetCellCentersRaw`, `GetNodeDataValuesRaw`, `GetCellDataValuesRaw`)
-
-### Phase 2: evs_automation library updates
-- [x] Add `get_network_contents_for_mcp(*module_names)` to `_EvsProcess`
-- [x] Add `patch_network_contents(json)` to `_EvsProcess`
-- [x] Add `new_application()` to `_EvsProcess`
-- [x] Add `save_application(path)` to `_EvsProcess` (already present)
-- [x] Add field data access via `get_field_info()` returning `FieldInfo`/`FieldData` wrapper classes
-- [x] Add `import_asset()` / `get_export_stage()` stubs (raise `NotImplementedError`)
-- [x] Review and fix API parity with internal evs.py (doc comments, signatures updated)
-
-### Phase 3: MCP server implementation
+### MCP Server Implementation
 - [ ] Design MCP tool surface (which tools to expose, granularity)
 - [ ] Implement MCP server using evs_automation as the transport
 - [ ] Static resource access: read schema/defaults/help from EVS install directory
@@ -177,6 +100,4 @@ with evs.get_field_info('kriging_3d', 'field_out') as field:
 
 ## Open Questions
 
-- ~~Should `patch_network_contents` support adding/removing connections?~~ **Yes** — `AddConnections` and `RemoveConnections` arrays are supported, batched in the same bulk update.
 - MCP tool granularity: one big "edit application" tool vs many small tools?
-- ~~Field data: will chunked/paginated reads be needed for very large fields, or is the pipe buffer sufficient?~~ **Yes** — all field data operations now accept optional `offset`/`count` args. Python `FieldInfo` transparently chunks at 100K items. The named pipe itself has no message size limit (it streams), but JSON serialization + Python object overhead are the real bottlenecks, so chunking keeps per-call memory bounded.
