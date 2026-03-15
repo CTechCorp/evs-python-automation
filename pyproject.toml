@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "evs-automation"
+version = "0.1.0"
+description = "Python automation API for Earth Volumetric Studio"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [
+    { name = "C Tech Development Corporation", email = "support@ctech.com" },
+]
+keywords = ["evs", "earth-volumetric-studio", "automation", "3d-modeling", "subsurface"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "pywin32>=306",
+    "psutil>=5.9",
+    "packaging>=23.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/evs_automation", "src/evs_util.py"]
+
+[project.urls]
+Homepage = "https://ctech.com"
+Repository = "https://github.com/CTechCorp/evs-python-automation"
+Issues = "https://github.com/CTechCorp/evs-python-automation/issues"
