@@ -103,7 +103,20 @@ The patch JSON uses the same structure as the MCP contents output:
 }
 ```
 
-This translates directly to `SetValue` calls for each property found in the patch. No module instancing or connection changes — just property updates. Module instancing, connections, and deletions should use the existing discrete API calls.
+This translates directly to `SetValue` calls for each property found in the patch. Connections can also be added/removed in the same batch:
+
+```json
+{
+  "AddConnections": [
+    { "FromModule": "mod_a", "FromPort": "field_out", "ToModule": "mod_b", "ToPort": "field_in" }
+  ],
+  "RemoveConnections": [
+    { "FromModule": "mod_c", "FromPort": "field_out", "ToModule": "mod_d", "ToPort": "field_in" }
+  ]
+}
+```
+
+All property changes, connection adds, and connection removes are batched within a single `BulkChanges` state push. Module instancing and deletions should still use the existing discrete API calls.
 
 ### Field Data Access (Implemented)
 
@@ -162,6 +175,6 @@ with evs.get_field_info('kriging_3d', 'field_out') as field:
 
 ## Open Questions
 
-- Should `patch_network_contents` support adding/removing connections, or keep that to discrete `connect()`/`disconnect()` calls?
+- ~~Should `patch_network_contents` support adding/removing connections?~~ **Yes** — `AddConnections` and `RemoveConnections` arrays are supported, batched in the same bulk update.
 - MCP tool granularity: one big "edit application" tool vs many small tools?
 - Field data: will chunked/paginated reads be needed for very large fields, or is the pipe buffer sufficient?

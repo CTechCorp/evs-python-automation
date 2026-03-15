@@ -590,12 +590,19 @@ class _EvsProcess:
     def patch_network_contents(self, patch_json: str | dict) -> Any:
         """
         Apply a partial JSON update to the running network. Sets only the properties present
-        in the JSON without clearing or reloading the network.
+        in the JSON without clearing or reloading the network. All changes (properties,
+        connections, disconnections) are batched in a single bulk update.
 
         The patch JSON should use the same structure as get_network_contents_for_mcp output:
         {
             "ApplicationProperties": { "Properties": { "Category": { "Property": value } } },
-            "Modules": { "module_name": { "Properties": { ... }, "Renderables": { ... } } }
+            "Modules": { "module_name": { "Properties": { ... }, "Renderables": { ... } } },
+            "AddConnections": [
+                { "FromModule": "mod_a", "FromPort": "out", "ToModule": "mod_b", "ToPort": "in" }
+            ],
+            "RemoveConnections": [
+                { "FromModule": "mod_a", "FromPort": "out", "ToModule": "mod_b", "ToPort": "in" }
+            ]
         }
 
         Keyword Arguments:
