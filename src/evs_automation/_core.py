@@ -49,7 +49,7 @@ def _set_or_find_pid(pid):
     return process.pid
 
 def _find_evs_version_path(suggested = None, prefer_development = True):
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\C Tech Development Corporation") as ct_key:
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\C Tech Development Corporation") as ct_key:
         max_version = packaging.version.Version("1.0.0.0")
         max_version_key_name = ''
         for i in range(0, winreg.QueryInfoKey(ct_key)[0]):
