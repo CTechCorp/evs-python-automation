@@ -29,7 +29,10 @@ dependencies = [
     "packaging>=23.0",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/evs_automation", "src/evs_util.py"]
+
 [project.urls]
 Homepage = "https://ctech.com"
-Repository = "https://github.com/C-Tech-Development-Corp/python_evs_automation"
-Issues = "https://github.com/C-Tech-Development-Corp/python_evs_automation/issues"
+Repository = "https://github.com/CTechCorp/evs-python-automation"
+Issues = "https://github.com/CTechCorp/evs-python-automation/issues"
