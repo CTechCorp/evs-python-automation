@@ -50,9 +50,9 @@ The internal `evs.py` (EvsShared/evs.py) has functions that the external `evs_au
 | `format_number_adaptive()` / `fn_a()` | `format_number_adaptive()` / `fn_a()` | Present | |
 | `get_application_info()` | `get_application_info()` | Present | |
 | `is_module_executed()` | `is_module_executed()` | Present | Always returns False (stub) |
-| `get_field_info()` | — | **Redesign** | See "Field Data Access" section below |
-| `import_asset()` | — | N/A | Internal-only (loads Python modules from EVS application assets via .NET loader). Not applicable externally. |
-| `get_export_stage()` | — | N/A | Internal-only (reads globals set by EVS export pipeline). Not applicable externally. |
+| `get_field_info()` | `get_field_info()` | **Done** | Redesigned — returns `FieldInfo`/`FieldData` wrapper classes that make pipe calls. See "Field Data Access" below. |
+| `import_asset()` | `import_asset()` | N/A | Raises `NotImplementedError` — internal-only (loads Python modules from EVS application assets via .NET loader). |
+| `get_export_stage()` | `get_export_stage()` | N/A | Raises `NotImplementedError` — internal-only (reads globals set by EVS export pipeline). |
 
 ### New Functions for MCP Server
 
@@ -105,37 +105,54 @@ The patch JSON uses the same structure as the MCP contents output:
 
 This translates directly to `SetValue` calls for each property found in the patch. No module instancing or connection changes — just property updates. Module instancing, connections, and deletions should use the existing discrete API calls.
 
-### Field Data Access
+### Field Data Access (Implemented)
 
 Internally, `get_field_info()` returns a `FieldInfo` object that holds a .NET field reader. Properties like `coordinates` and `values` are lazily loaded and can be very large (millions of points). This doesn't translate to a single pipe call.
 
-External replacement — split into multiple calls:
+**Implementation approach**: The external API preserves the same `FieldInfo`/`FieldData` class interface as the internal API but uses pipe calls under the hood. Each data access opens a new field reader on the EVS side, extracts the data, serializes to JSON, and closes the reader. The `IFieldReader` interface was extended with `Raw` methods returning `double[]` instead of `PyList` for efficient pipe serialization.
 
-| Function | Pipe Method | Returns |
+**Pipe operations** (in `ExternalScriptOperations.cs`):
+
+| Pipe Method | Args | Returns |
 |---|---|---|
-| `get_field_summary(module, port)` | `GetFieldSummary` | `{number_coordinates, number_cells, number_node_data, number_cell_data, coordinate_units}` |
-| `get_field_coordinates(module, port)` | `GetFieldCoordinates` | List of `[x, y, z]` tuples |
-| `get_field_cell_centers(module, port)` | `GetFieldCellCenters` | List of `[x, y, z]` tuples |
-| `get_field_node_data(module, port, index)` | `GetFieldNodeData` | `{name, units, is_log, values: [...]}` |
-| `get_field_cell_data(module, port, index)` | `GetFieldCellData` | `{name, units, is_log, values: [...]}` |
+| `GetFieldSummary` | `module, port` | `{NumberOfCoordinates, NumberOfCells, NumberOfNodeData, NumberOfCellData, CoordinateUnits}` |
+| `GetFieldCoordinates` | `module, port` | Flat `double[]` (x0,y0,z0, x1,y1,z1, ...) |
+| `GetFieldCellCenters` | `module, port` | Flat `double[]` (x0,y0,z0, x1,y1,z1, ...) |
+| `GetFieldNodeData` | `module, port, index` | `{Name, Units, IsLog, ComponentCount, Values: double[]}` |
+| `GetFieldCellData` | `module, port, index` | `{Name, Units, IsLog, ComponentCount, Values: double[]}` |
 
-This lets callers fetch only what they need (e.g. just the summary, or just one data component) without pulling the entire field over the pipe. For very large fields, chunked/paginated variants may be needed later.
+**Python classes** (in `evs_automation.py`):
+- `FieldInfo` — wraps summary data, lazily fetches coordinates/cell_centers. Same properties as internal: `number_coordinates`, `number_cells`, `number_node_data`, `number_cell_data`, `coordinate_units`, `coordinates`, `cell_centers`, `get_node_data(i)`, `get_cell_data(i)`.
+- `FieldData` — wraps a single data component: `name`, `units`, `is_log`, `component_count`, `values`. Values are unpacked from flat arrays (scalar stays flat, vector grouped into tuples).
+
+**Usage** (matches internal API):
+```python
+with evs.get_field_info('kriging_3d', 'field_out') as field:
+    print(f'{field.number_coordinates} coordinates')
+    for i in range(field.number_node_data):
+        data = field.get_node_data(i)
+        print(f'{data.name}: {len(data.values)} values')
+```
+
+**Caveat**: Each `get_node_data`/`get_cell_data`/`coordinates`/`cell_centers` call opens a new field reader on the EVS side. For very large fields, this may need chunked/paginated variants later.
 
 ## Work Items
 
 ### Phase 1: EVS-side pipe operations
-- [ ] Add `GetNetworkContentsForMcp` operation to `ExternalScriptOperations.cs`
-- [ ] Add `PatchNetworkContents` operation to `ExternalScriptOperations.cs`
+- [x] Add `GetNetworkContentsForMcp` operation to `ExternalScriptOperations.cs`
+- [x] Add `PatchNetworkContents` operation to `ExternalScriptOperations.cs`
 - [ ] Add `NewApplication` operation to `ExternalScriptOperations.cs`
-- [ ] Add field data operations (`GetFieldSummary`, `GetFieldCoordinates`, `GetFieldCellCenters`, `GetFieldNodeData`, `GetFieldCellData`)
+- [x] Add field data operations (`GetFieldSummary`, `GetFieldCoordinates`, `GetFieldCellCenters`, `GetFieldNodeData`, `GetFieldCellData`)
+- [x] Add `IFieldReader` raw array methods (`GetCoordinatesRaw`, `GetCellCentersRaw`, `GetNodeDataValuesRaw`, `GetCellDataValuesRaw`)
 
 ### Phase 2: evs_automation library updates
-- [ ] Add `get_network_contents_for_mcp(*module_names)` to `_EvsProcess`
-- [ ] Add `patch_network_contents(json)` to `_EvsProcess`
+- [x] Add `get_network_contents_for_mcp(*module_names)` to `_EvsProcess`
+- [x] Add `patch_network_contents(json)` to `_EvsProcess`
 - [ ] Add `new_application()` to `_EvsProcess`
-- [ ] Add `save_application(path)` to `_EvsProcess`
-- [ ] Add field data methods (`get_field_summary`, `get_field_coordinates`, `get_field_cell_centers`, `get_field_node_data`, `get_field_cell_data`)
-- [ ] Review and fix any other gaps vs internal API
+- [x] Add `save_application(path)` to `_EvsProcess` (already present)
+- [x] Add field data access via `get_field_info()` returning `FieldInfo`/`FieldData` wrapper classes
+- [x] Add `import_asset()` / `get_export_stage()` stubs (raise `NotImplementedError`)
+- [x] Review and fix API parity with internal evs.py (doc comments, signatures updated)
 
 ### Phase 3: MCP server implementation
 - [ ] Design MCP tool surface (which tools to expose, granularity)
